@@ -30,10 +30,6 @@ var allowedOperations = []string{
 
 type Arguments map[string]string
 
-type Users struct {
-	Users []User `json:"users"`
-}
-
 type User struct {
 	Id    string `json:"id"`
 	Email string `json:"email"`
@@ -65,6 +61,7 @@ func ValidateArgs(args Arguments) error {
 
 func List(arguments Arguments, writer io.Writer) error {
 	file, err := os.OpenFile(arguments["fileName"], os.O_RDWR, FilePermission)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
@@ -82,7 +79,8 @@ func List(arguments Arguments, writer io.Writer) error {
 }
 
 func Add(arguments Arguments, writer io.Writer) error {
-	file, err := os.OpenFile(arguments["fileName"], os.O_RDWR, FilePermission)
+	file, err := os.OpenFile(arguments["fileName"], os.O_RDWR|os.O_CREATE, FilePermission)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
@@ -90,27 +88,30 @@ func Add(arguments Arguments, writer io.Writer) error {
 	if err != nil {
 		return err
 	}
+
 	var users []User
-	err = json.Unmarshal(bytes, &users)
-	if err != nil {
-		return err
-	}
-	var itemToAdd User
-	json.Unmarshal([]byte(arguments["item"]), &itemToAdd)
-	fmt.Println(itemToAdd)
-	var exists interface{}
-	for _, user := range users {
-		if user.Id == itemToAdd.Id {
-			exists = user
+	if len(bytes) > 0 {
+		err = json.Unmarshal(bytes, &users)
+		if err != nil {
+			return err
 		}
 	}
-	if exists != nil {
-		result := fmt.Sprintf("Item with id %s already exists", itemToAdd.Id)
-		_, err = writer.Write([]byte(result))
-	} else {
-		bytes, err = json.Marshal(exists)
-		_, err = writer.Write(bytes)
+
+	var itemToAdd User
+	json.Unmarshal([]byte(arguments["item"]), &itemToAdd)
+
+	for _, user := range users {
+		if user.Id == itemToAdd.Id {
+			result := fmt.Sprintf("Item with id %s already exists", itemToAdd.Id)
+			_, err = writer.Write([]byte(result))
+			return nil
+		}
 	}
+
+	users = append(users, itemToAdd)
+	bytes, err = json.Marshal(users)
+	ioutil.WriteFile(arguments["fileName"], bytes, FilePermission)
+	_, err = writer.Write(bytes)
 	if err != nil {
 		return err
 	}
@@ -119,6 +120,7 @@ func Add(arguments Arguments, writer io.Writer) error {
 
 func Remove(arguments Arguments, writer io.Writer) error {
 	file, err := os.OpenFile(arguments["fileName"], os.O_RDWR, FilePermission)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
@@ -131,18 +133,26 @@ func Remove(arguments Arguments, writer io.Writer) error {
 	if err != nil {
 		return err
 	}
-	userId := arguments["userId"]
-	var result interface{}
+
+	userId := arguments["id"]
+	var usersToSave []User
+	var found bool
+
 	for _, user := range users {
 		if user.Id == userId {
-			println()
+			found = true
+		} else {
+			usersToSave = append(usersToSave, user)
 		}
 	}
-	if result == nil {
-		return fmt.Errorf("Item with id %s not found", userId)
+	if !found {
+		result := fmt.Sprintf("Item with id %s not found", userId)
+		_, err = writer.Write([]byte(result))
+	} else {
+		bytes, err = json.Marshal(usersToSave)
+		ioutil.WriteFile(arguments["fileName"], bytes, FilePermission)
+		_, err = writer.Write(bytes)
 	}
-	bytes, err = json.Marshal(result)
-	_, err = writer.Write(bytes)
 	if err != nil {
 		return err
 	}
@@ -151,6 +161,7 @@ func Remove(arguments Arguments, writer io.Writer) error {
 
 func FindById(arguments Arguments, writer io.Writer) error {
 	file, err := os.OpenFile(arguments["fileName"], os.O_RDWR, FilePermission)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
