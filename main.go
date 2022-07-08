@@ -56,7 +56,7 @@ func ValidateArgs(args Arguments) error {
 			return fmt.Errorf("-item flag has to be specified")
 		}
 	} else if operation == FIND_BY_ID || operation == REMOVE {
-		if args["userId"] == "" {
+		if args["id"] == "" {
 			return fmt.Errorf("-id flag has to be specified")
 		}
 	}
@@ -82,6 +82,38 @@ func List(arguments Arguments, writer io.Writer) error {
 }
 
 func Add(arguments Arguments, writer io.Writer) error {
+	file, err := os.OpenFile(arguments["fileName"], os.O_RDWR, FilePermission)
+	if err != nil {
+		return err
+	}
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return err
+	}
+	var users []User
+	err = json.Unmarshal(bytes, &users)
+	if err != nil {
+		return err
+	}
+	var itemToAdd User
+	json.Unmarshal([]byte(arguments["item"]), &itemToAdd)
+	fmt.Println(itemToAdd)
+	var exists interface{}
+	for _, user := range users {
+		if user.Id == itemToAdd.Id {
+			exists = user
+		}
+	}
+	if exists != nil {
+		result := fmt.Sprintf("Item with id %s already exists", itemToAdd.Id)
+		_, err = writer.Write([]byte(result))
+	} else {
+		bytes, err = json.Marshal(exists)
+		_, err = writer.Write(bytes)
+	}
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -131,7 +163,7 @@ func FindById(arguments Arguments, writer io.Writer) error {
 	if err != nil {
 		return err
 	}
-	userId := arguments["userId"]
+	userId := arguments["id"]
 	var result interface{}
 	for _, user := range users {
 		if user.Id == userId {
@@ -139,10 +171,11 @@ func FindById(arguments Arguments, writer io.Writer) error {
 		}
 	}
 	if result == nil {
-		return fmt.Errorf("Item with id %s not found", userId)
+		_, err = writer.Write([]byte{})
+	} else {
+		bytes, err = json.Marshal(result)
+		_, err = writer.Write(bytes)
 	}
-	bytes, err = json.Marshal(result)
-	_, err = writer.Write(bytes)
 	if err != nil {
 		return err
 	}
